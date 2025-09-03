@@ -11,7 +11,6 @@ use ratatui::{
     widgets::Widget,
 };
 
-#[derive(PartialEq, Clone, Copy)]
 enum Direction {
     North,
     East,
@@ -19,7 +18,6 @@ enum Direction {
     West,
 }
 
-#[derive(Clone, Copy)]
 enum KeyPressed {
     None,
     Up,
@@ -94,7 +92,7 @@ impl App {
     }
 
     fn update_direction(&mut self) {
-        match (self.key_pressed, self.direction) {
+        match (&self.key_pressed, &self.direction) {
             (KeyPressed::Up, Direction::East) => self.direction = Direction::North,
             (KeyPressed::Up, Direction::West) => self.direction = Direction::North,
             (KeyPressed::Right, Direction::North) => self.direction = Direction::East,
