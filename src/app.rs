@@ -4,12 +4,34 @@ use std::{
 };
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::{
-    DefaultTerminal, Frame,
-    buffer::Buffer,
-    layout::{Position, Rect},
-    widgets::Widget,
-};
+use ratatui::{DefaultTerminal, Frame, buffer::Buffer, layout::Rect, widgets::Widget};
+
+#[derive(Clone, Copy)]
+struct Position {
+    x: u16,
+    y: u16,
+}
+
+impl Position {
+    const ORIGIN: Position = Position { x: 0, y: 0 };
+
+    fn inside_rect(&self, rect: Rect) -> bool {
+        self.x < rect.width && self.y < 2 * rect.height
+    }
+
+    fn character(&self) -> char {
+        if self.y % 2 == 0 { '▀' } else { '▄' }
+    }
+}
+
+impl From<Position> for ratatui::layout::Position {
+    fn from(value: Position) -> Self {
+        Self {
+            x: value.x,
+            y: value.y / 2,
+        }
+    }
+}
 
 enum Direction {
     North,
@@ -137,8 +159,8 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        if self.head_pos.x < buf.area.width && self.head_pos.y < buf.area.height {
-            buf[self.head_pos].set_symbol("█");
+        if self.head_pos.inside_rect(buf.area) {
+            buf[self.head_pos].set_symbol(&self.head_pos.character().to_string());
         }
     }
 }
