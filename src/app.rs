@@ -17,6 +17,26 @@ enum Direction {
     West,
 }
 
+impl Direction {
+    const fn from_key(key: KeyCode) -> Option<Self> {
+        match key {
+            KeyCode::Up => Some(Direction::North),
+            KeyCode::Down => Some(Direction::South),
+            KeyCode::Left => Some(Direction::West),
+            KeyCode::Right => Some(Direction::East),
+            _ => None,
+        }
+    }
+    const fn opposite(self) -> Self {
+        match self {
+            Direction::North => Direction::South,
+            Direction::East => Direction::West,
+            Direction::South => Direction::North,
+            Direction::West => Direction::East,
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Copy)]
 struct Position {
     x: u16,
@@ -30,15 +50,6 @@ impl Position {
             Direction::East => self.x += 1,
             Direction::South => self.y += 1,
             Direction::West => self.x -= 1,
-        }
-    }
-
-    const fn shift_opposite(&mut self, direction: &Direction) {
-        match direction {
-            Direction::North => self.y += 1,
-            Direction::East => self.x -= 1,
-            Direction::South => self.y -= 1,
-            Direction::West => self.x += 1,
         }
     }
 }
@@ -61,7 +72,6 @@ pub struct App {
     head_pos: Position,
     segments: VecDeque<Segment>,
     exit: bool,
-    direction: Direction,
     food_pos: Position,
 }
 
@@ -70,7 +80,6 @@ impl Default for App {
         App {
             head_pos: Position { x: 14, y: 29 },
             exit: false,
-            direction: Direction::East,
             food_pos: Position { x: 17, y: 3 }, // todo: randomize
             segments: VecDeque::from([
                 Segment {
@@ -136,10 +145,14 @@ impl App {
                 }
                 _ => {}
             });
-            if let Some(key_code) = key_pressed {
-                self.update_direction(key_code);
+            assert!(!self.segments.is_empty());
+            let mut old_direction = self.segments.back().unwrap().direction;
+            if let Some(key) = key_pressed {
+                if let Some(new_direction) = Direction::from_key(key) {
+                    App::update_direction(&mut old_direction, &new_direction);
+                }
             }
-            self.move_snake();
+            self.move_snake(&old_direction);
         }
         Ok(())
     }
@@ -148,27 +161,27 @@ impl App {
         frame.render_widget(self, frame.area());
     }
 
-    const fn update_direction(&mut self, key_pressed: KeyCode) {
-        match (key_pressed, &self.direction) {
-            (KeyCode::Up, Direction::East) => self.direction = Direction::North,
-            (KeyCode::Up, Direction::West) => self.direction = Direction::North,
-            (KeyCode::Right, Direction::North) => self.direction = Direction::East,
-            (KeyCode::Right, Direction::South) => self.direction = Direction::East,
-            (KeyCode::Down, Direction::East) => self.direction = Direction::South,
-            (KeyCode::Down, Direction::West) => self.direction = Direction::South,
-            (KeyCode::Left, Direction::North) => self.direction = Direction::West,
-            (KeyCode::Left, Direction::South) => self.direction = Direction::West,
+    const fn update_direction(old_direction: &mut Direction, new_direction: &Direction) {
+        match (&old_direction, new_direction) {
+            (Direction::North, Direction::East) => *old_direction = Direction::East,
+            (Direction::North, Direction::West) => *old_direction = Direction::West,
+            (Direction::East, Direction::North) => *old_direction = Direction::North,
+            (Direction::East, Direction::South) => *old_direction = Direction::South,
+            (Direction::South, Direction::East) => *old_direction = Direction::East,
+            (Direction::South, Direction::West) => *old_direction = Direction::West,
+            (Direction::West, Direction::North) => *old_direction = Direction::North,
+            (Direction::West, Direction::South) => *old_direction = Direction::South,
             _ => {}
         }
     }
 
-    fn move_head(&mut self) {
-        self.head_pos.shift(&self.direction);
+    fn move_head(&mut self, direction: &Direction) {
+        self.head_pos.shift(direction);
         assert!(!self.segments.is_empty());
         let last_segment = self.segments.back_mut().unwrap();
-        if last_segment.direction != self.direction {
+        if last_segment.direction != *direction {
             self.segments.push_back(Segment {
-                direction: self.direction, // here a copy happens
+                direction: *direction, // here a copy happens
                 length: 1,
             });
         } else {
@@ -176,8 +189,8 @@ impl App {
         }
     }
 
-    fn move_snake(&mut self) {
-        self.move_head();
+    fn move_snake(&mut self, direction: &Direction) {
+        self.move_head(direction);
         if self.head_pos == self.food_pos {
             self.food_pos = Position {
                 x: rand::random::<u16>() % 25,
@@ -207,7 +220,7 @@ impl Widget for &App {
         for segment in self.segments.iter().rev() {
             for _ in 0..segment.length {
                 buf[start_pos].set_symbol("█").set_fg(Color::Yellow);
-                start_pos.shift_opposite(&segment.direction);
+                start_pos.shift(&segment.direction.opposite());
             }
         }
         // TODO: handle food near snake color merging (bg and fg)
