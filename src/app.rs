@@ -113,7 +113,6 @@ impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         // the first frame will not update the position
         let mut timer = Instant::now();
-        let mut events = Vec::new();
         while !self.exit {
             // DRAW
             terminal.draw(|frame| self.draw(frame))?;
@@ -123,38 +122,38 @@ impl App {
             }
             timer = Instant::now();
 
-            events.clear();
-            while event::poll(Duration::from_secs(0))? {
-                events.push(event::read()?); // todo: probably a vector isn't needed here
-            }
-
-            // STATE
-            let mut key_pressed = None;
-            events.iter().for_each(|event| match event {
-                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    match key_event.code {
-                        KeyCode::Char('q') => {
-                            self.exit = true;
-                        }
-                        KeyCode::Left => key_pressed = Some(KeyCode::Left),
-                        KeyCode::Right => key_pressed = Some(KeyCode::Right),
-                        KeyCode::Up => key_pressed = Some(KeyCode::Up),
-                        KeyCode::Down => key_pressed = Some(KeyCode::Down),
-                        _ => {}
-                    }
-                }
-                _ => {}
-            });
             assert!(!self.segments.is_empty());
             let mut old_direction = self.segments.back().unwrap().direction;
-            if let Some(key) = key_pressed {
-                if let Some(new_direction) = Direction::from_key(key) {
-                    App::update_direction(&mut old_direction, &new_direction);
+            while let Some(event) = App::read_event()? {
+                match event {
+                    Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                        match key_event.code {
+                            KeyCode::Char('q') => {
+                                self.exit = true;
+                            }
+                            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {
+                                App::update_direction(
+                                    &mut old_direction,
+                                    &Direction::from_key(key_event.code).unwrap(),
+                                )
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
                 }
             }
             self.move_snake(&old_direction);
         }
         Ok(())
+    }
+
+    fn read_event() -> io::Result<Option<Event>> {
+        if event::poll(Duration::from_secs(0))? {
+            Ok(Some(event::read()?))
+        } else {
+            Ok(None)
+        }
     }
 
     fn draw(&self, frame: &mut Frame) {
