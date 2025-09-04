@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame, buffer::Buffer, layout::Rect, style::Color, widgets::Widget,
 };
@@ -117,35 +117,63 @@ impl App {
             // DRAW
             terminal.draw(|frame| self.draw(frame))?;
 
-            if timer.elapsed() < FRAME_DURATION {
-                thread::sleep(FRAME_DURATION - timer.elapsed());
-            }
+            App::wait_for_next_tick(&timer, FRAME_DURATION);
             timer = Instant::now();
 
             assert!(!self.segments.is_empty());
-            let mut old_direction = self.segments.back().unwrap().direction;
+            let mut next_direction = self.segments.back().unwrap().direction;
             while let Some(event) = App::read_event()? {
-                match event {
-                    Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                        match key_event.code {
-                            KeyCode::Char('q') => {
-                                self.exit = true;
-                            }
-                            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {
-                                App::update_direction(
-                                    &mut old_direction,
-                                    &Direction::from_key(key_event.code).unwrap(),
-                                )
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
+                App::handle_event(
+                    event,
+                    || self.exit(),
+                    |key_code| {
+                        App::update_direction(
+                            &mut next_direction,
+                            &Direction::from_key(key_code).unwrap(),
+                        );
+                    },
+                );
             }
-            self.move_snake(&old_direction);
+            self.move_snake(&next_direction);
         }
         Ok(())
+    }
+
+    const fn exit(&mut self) {
+        self.exit = true;
+    }
+
+    fn wait_for_next_tick(prev_tick: &Instant, tick_duration: Duration) {
+        if prev_tick.elapsed() < tick_duration {
+            thread::sleep(tick_duration - prev_tick.elapsed());
+        }
+    }
+
+    fn handle_event<F: FnMut(), G: FnMut(KeyCode)>(
+        event: Event,
+        on_q_press: F,
+        on_arrow_key_press: G,
+    ) {
+        match event {
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                App::handle_key_event(key_event, on_q_press, on_arrow_key_press);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_key_event<F: FnMut(), G: FnMut(KeyCode)>(
+        key_event: KeyEvent,
+        mut on_q_press: F,
+        mut on_arrow_key_press: G,
+    ) {
+        match key_event.code {
+            KeyCode::Char('q') => on_q_press(),
+            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {
+                on_arrow_key_press(key_event.code)
+            }
+            _ => {}
+        }
     }
 
     fn read_event() -> io::Result<Option<Event>> {
