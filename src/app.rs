@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame, buffer::Buffer, layout::Rect, style::Color, widgets::Widget,
 };
@@ -122,18 +122,16 @@ impl App {
 
             assert!(!self.segments.is_empty());
             let mut next_direction = self.segments.back().unwrap().direction;
-            while let Some(event) = App::read_event()? {
-                App::handle_event(
-                    event,
-                    || self.exit(),
-                    |key_code| {
-                        App::update_direction(
-                            &mut next_direction,
-                            &Direction::from_key(key_code).unwrap(),
-                        );
-                    },
-                );
-            }
+            App::read_events(
+                || self.exit(),
+                |key| {
+                    assert!(matches!(
+                        key,
+                        KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
+                    ));
+                    App::update_direction(&mut next_direction, &Direction::from_key(key).unwrap());
+                },
+            )?;
             self.move_snake(&next_direction);
         }
         Ok(())
@@ -149,29 +147,29 @@ impl App {
         }
     }
 
-    fn handle_event<F: FnMut(), G: FnMut(KeyCode)>(
-        event: Event,
-        on_q_press: F,
-        on_arrow_key_press: G,
-    ) {
-        match event {
-            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                App::handle_key_event(key_event, on_q_press, on_arrow_key_press);
+    fn read_events<F: FnMut(), G: FnMut(KeyCode)>(
+        mut on_q_press: F,
+        mut on_arrow_key_press: G,
+    ) -> io::Result<()> {
+        while let Some(event) = App::read_event()? {
+            match event {
+                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                    App::handle_key_press(key_event.code, &mut on_q_press, &mut on_arrow_key_press);
+                }
+                _ => {}
             }
-            _ => {}
         }
+        Ok(())
     }
 
-    fn handle_key_event<F: FnMut(), G: FnMut(KeyCode)>(
-        key_event: KeyEvent,
+    fn handle_key_press<F: FnMut(), G: FnMut(KeyCode)>(
+        key: KeyCode,
         mut on_q_press: F,
         mut on_arrow_key_press: G,
     ) {
-        match key_event.code {
+        match key {
             KeyCode::Char('q') => on_q_press(),
-            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {
-                on_arrow_key_press(key_event.code)
-            }
+            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => on_arrow_key_press(key),
             _ => {}
         }
     }
