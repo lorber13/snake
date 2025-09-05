@@ -120,8 +120,7 @@ impl App {
             App::wait_for_next_tick(&timer, FRAME_DURATION);
             timer = Instant::now();
 
-            assert!(!self.segments.is_empty());
-            let mut next_direction = self.segments.back().unwrap().direction;
+            let mut next_direction = self.snake_head_direction();
             App::read_events(
                 || self.exit(),
                 |key| {
@@ -139,6 +138,11 @@ impl App {
 
     const fn exit(&mut self) {
         self.exit = true;
+    }
+
+    fn snake_head_direction(&self) -> Direction {
+        assert!(!self.segments.is_empty());
+        self.segments.back().unwrap().direction
     }
 
     fn wait_for_next_tick(prev_tick: &Instant, tick_duration: Duration) {
