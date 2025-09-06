@@ -113,7 +113,8 @@ impl App {
             Event::FocusGained => todo!(),
             _ => {}
         });
-        if self.snake.move_snake(&next_direction).is_err() {
+        self.snake.move_snake(&next_direction);
+        if self.snake.touches_border() || self.snake.has_self_intersection() {
             self.exit();
         }
     }

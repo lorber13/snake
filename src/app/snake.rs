@@ -45,8 +45,8 @@ pub struct Position {
 impl Position {
     fn random_range(area: Rect) -> Self {
         Self {
-            x: rand::random_range(0..area.width),
-            y: rand::random_range(0..area.height),
+            x: rand::random_range(area.x..area.width),
+            y: rand::random_range(area.y..area.height),
         }
     }
     const fn shift(&mut self, direction: &Direction) {
@@ -82,9 +82,6 @@ pub struct Snake {
     snake_color: Color,
 }
 
-#[derive(Debug)]
-pub struct OutOfRange;
-
 impl Snake {
     pub fn new(
         area: Rect,
@@ -109,14 +106,16 @@ impl Snake {
         self.segments.back().unwrap().direction
     }
 
-    pub fn move_snake(&mut self, direction: &Direction) -> Result<(), OutOfRange> {
-        self.shift_head(direction)?;
+    pub fn move_snake(&mut self, direction: &Direction) {
+        self.shift_head(direction);
         if self.head_pos == self.food_pos {
-            self.food_pos = Position::random_range(self.area)
+            self.food_pos = Position::random_range(self.area.inner(Margin {
+                horizontal: 1,
+                vertical: 1,
+            }))
         } else {
             self.shift_tail();
         }
-        Ok(())
     }
 
     fn shift_tail(&mut self) {
@@ -127,20 +126,68 @@ impl Snake {
         }
     }
 
-    fn shift_head(&mut self, direction: &Direction) -> Result<(), OutOfRange> {
-        let mut new_pos = self.head_pos;
-        new_pos.shift(direction);
-        if !self
+    pub fn touches_border(&self) -> bool {
+        !self
             .area
             .inner(Margin {
                 horizontal: 1,
                 vertical: 1,
             })
-            .contains(new_pos.into())
-        {
-            return Err(OutOfRange);
-        }
+            .contains(self.head_pos.into())
+    }
 
+    pub fn has_self_intersection(&self) -> bool {
+        let (mut horizontal_counter, mut vertical_counter) = (0, 0);
+        for segment in self.segments.iter().rev() {
+            let (prev_horizontal_counter, prev_vertical_counter) =
+                (horizontal_counter, vertical_counter);
+            match segment.direction {
+                Direction::North => {
+                    vertical_counter += segment.length as isize;
+                    if horizontal_counter == 0
+                        && (vertical_counter == 0
+                            || (vertical_counter < 0 && prev_vertical_counter > 0)
+                            || (vertical_counter > 0 && prev_vertical_counter < 0))
+                    {
+                        return true;
+                    }
+                }
+                Direction::East => {
+                    horizontal_counter += segment.length as isize;
+                    if vertical_counter == 0
+                        && (horizontal_counter == 0
+                            || (horizontal_counter < 0 && prev_horizontal_counter > 0)
+                            || (horizontal_counter > 0 && prev_horizontal_counter < 0))
+                    {
+                        return true;
+                    }
+                }
+                Direction::South => {
+                    vertical_counter -= segment.length as isize;
+                    if horizontal_counter == 0
+                        && (vertical_counter == 0
+                            || (vertical_counter < 0 && prev_vertical_counter > 0)
+                            || (vertical_counter > 0 && prev_vertical_counter < 0))
+                    {
+                        return true;
+                    }
+                }
+                Direction::West => {
+                    horizontal_counter -= segment.length as isize;
+                    if vertical_counter == 0
+                        && (horizontal_counter == 0
+                            || (horizontal_counter < 0 && prev_horizontal_counter > 0)
+                            || (horizontal_counter > 0 && prev_horizontal_counter < 0))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn shift_head(&mut self, direction: &Direction) {
         self.head_pos.shift(direction);
         assert!(!self.segments.is_empty());
         let last_segment = self.segments.back_mut().unwrap();
@@ -152,16 +199,12 @@ impl Snake {
         } else {
             last_segment.length += 1;
         }
-        Ok(())
     }
 }
 
 impl Widget for &Snake {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        buf[self.food_pos]
-            // .set_symbol(&self.food_pos.character().to_string())
-            .set_symbol("█")
-            .set_fg(self.food_color);
+        buf[self.food_pos].set_symbol("█").set_fg(self.food_color);
         let mut start_pos = self.head_pos; // todo: this can become a iterator
         for segment in self.segments.iter().rev() {
             for _ in 0..segment.length {
@@ -172,5 +215,129 @@ impl Widget for &Snake {
         Block::bordered()
             .border_type(BorderType::Thick)
             .render(area, buf);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    const ORIGIN: Position = Position { x: 0, y: 0 };
+
+    #[test]
+    fn square_self_intersection() {
+        let snake = Snake {
+            head_pos: ORIGIN,
+            segments: VecDeque::from([
+                Segment {
+                    direction: Direction::North,
+                    length: 1,
+                },
+                Segment {
+                    direction: Direction::East,
+                    length: 1,
+                },
+                Segment {
+                    direction: Direction::South,
+                    length: 1,
+                },
+                Segment {
+                    direction: Direction::West,
+                    length: 1,
+                },
+            ]),
+            food_pos: ORIGIN,
+            area: Rect::ZERO,
+            food_color: Color::Black,
+            snake_color: Color::Black,
+        };
+        assert!(snake.has_self_intersection())
+    }
+
+    #[test]
+    fn rectangle_self_intersection() {
+        let snake = Snake {
+            head_pos: ORIGIN,
+            segments: VecDeque::from([
+                Segment {
+                    direction: Direction::North,
+                    length: 2,
+                },
+                Segment {
+                    direction: Direction::East,
+                    length: 1,
+                },
+                Segment {
+                    direction: Direction::South,
+                    length: 2,
+                },
+                Segment {
+                    direction: Direction::West,
+                    length: 1,
+                },
+            ]),
+            food_pos: ORIGIN,
+            area: Rect::ZERO,
+            food_color: Color::Black,
+            snake_color: Color::Black,
+        };
+        assert!(snake.has_self_intersection())
+    }
+
+    #[test]
+    fn p_self_intersection() {
+        let snake = Snake {
+            head_pos: ORIGIN,
+            segments: VecDeque::from([
+                Segment {
+                    direction: Direction::North,
+                    length: 2,
+                },
+                Segment {
+                    direction: Direction::East,
+                    length: 1,
+                },
+                Segment {
+                    direction: Direction::South,
+                    length: 1,
+                },
+                Segment {
+                    direction: Direction::West,
+                    length: 1,
+                },
+            ]),
+            food_pos: ORIGIN,
+            area: Rect::ZERO,
+            food_color: Color::Black,
+            snake_color: Color::Black,
+        };
+        assert!(snake.has_self_intersection())
+    }
+
+    #[test]
+    fn c_self_intersection() {
+        let snake = Snake {
+            head_pos: ORIGIN,
+            segments: VecDeque::from([
+                Segment {
+                    direction: Direction::North,
+                    length: 2,
+                },
+                Segment {
+                    direction: Direction::East,
+                    length: 1,
+                },
+                Segment {
+                    direction: Direction::South,
+                    length: 1,
+                },
+            ]),
+            food_pos: ORIGIN,
+            area: Rect::ZERO,
+            food_color: Color::Black,
+            snake_color: Color::Black,
+        };
+        assert!(!snake.has_self_intersection())
     }
 }
