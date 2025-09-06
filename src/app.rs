@@ -9,161 +9,123 @@ use ratatui::{
     DefaultTerminal, Frame, buffer::Buffer, layout::Rect, style::Color, widgets::Widget,
 };
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum Direction {
-    North,
-    East,
-    South,
-    West,
-}
+use crate::app::snake::{Direction, Position, Segment, Snake};
 
-impl Direction {
-    const fn from_key(key: KeyCode) -> Option<Self> {
-        match key {
-            KeyCode::Up => Some(Direction::North),
-            KeyCode::Down => Some(Direction::South),
-            KeyCode::Left => Some(Direction::West),
-            KeyCode::Right => Some(Direction::East),
-            _ => None,
-        }
-    }
-    const fn opposite(self) -> Self {
-        match self {
-            Direction::North => Direction::South,
-            Direction::East => Direction::West,
-            Direction::South => Direction::North,
-            Direction::West => Direction::East,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-struct Position {
-    x: u16,
-    y: u16,
-}
-
-impl Position {
-    const fn shift(&mut self, direction: &Direction) {
-        match direction {
-            Direction::North => self.y -= 1,
-            Direction::East => self.x += 1,
-            Direction::South => self.y += 1,
-            Direction::West => self.x -= 1,
-        }
-    }
-}
-
-impl From<Position> for ratatui::layout::Position {
-    fn from(value: Position) -> Self {
-        Self {
-            x: value.x,
-            y: value.y,
-        }
-    }
-}
-
-struct Segment {
-    direction: Direction,
-    length: usize, // todo: define real size
-}
+mod snake;
 
 pub struct App {
-    head_pos: Position,
-    segments: VecDeque<Segment>,
     exit: bool,
-    food_pos: Position,
+    snake: Snake,
 }
 
-impl Default for App {
-    fn default() -> Self {
-        App {
-            head_pos: Position { x: 14, y: 29 },
-            exit: false,
-            food_pos: Position { x: 17, y: 3 }, // todo: randomize
-            segments: VecDeque::from([
-                Segment {
-                    direction: Direction::West,
-                    length: 1,
-                },
-                Segment {
-                    direction: Direction::North,
-                    length: 5,
-                },
-                Segment {
-                    direction: Direction::East,
-                    length: 2,
-                },
-                Segment {
-                    direction: Direction::South,
-                    length: 3,
-                },
-                Segment {
-                    direction: Direction::East,
-                    length: 3,
-                },
-            ]),
+struct EventReader;
+
+impl EventReader {
+    fn is_event_available() -> bool {
+        event::poll(Duration::from_secs(0)).unwrap_or(false)
+    }
+
+    fn try_read_event() -> Option<Event> {
+        if EventReader::is_event_available() {
+            event::read().ok()
+        } else {
+            None
         }
+    }
+}
+
+impl Iterator for EventReader {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        EventReader::try_read_event()
     }
 }
 
 const FRAME_DURATION: Duration = Duration::from_millis(100);
 
 impl App {
+    pub fn new(area: Rect) -> Self {
+        App {
+            exit: false,
+            snake: Snake::new(
+                area,
+                VecDeque::from([
+                    Segment {
+                        direction: Direction::West,
+                        length: 1,
+                    },
+                    Segment {
+                        direction: Direction::North,
+                        length: 5,
+                    },
+                    Segment {
+                        direction: Direction::East,
+                        length: 2,
+                    },
+                    Segment {
+                        direction: Direction::South,
+                        length: 3,
+                    },
+                    Segment {
+                        direction: Direction::East,
+                        length: 3,
+                    },
+                ]),
+                Position { x: 17, y: 3 }, // todo: randomize
+                Position { x: 14, y: 29 },
+                Color::Yellow,
+                Color::Green,
+            ),
+        }
+    }
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         // the first frame will not update the position
         let mut timer = Instant::now();
         while !self.exit {
-            // DRAW
             terminal.draw(|frame| self.draw(frame))?;
 
             App::wait_for_next_tick(&timer, FRAME_DURATION);
             timer = Instant::now();
 
-            let mut next_direction = self.snake_head_direction();
-            App::read_events(
-                || self.exit(),
-                |key| {
-                    assert!(matches!(
-                        key,
-                        KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
-                    ));
-                    App::update_direction(&mut next_direction, &Direction::from_key(key).unwrap());
-                },
-            )?;
-            self.move_snake(&next_direction);
+            self.update_state(EventReader);
         }
         Ok(())
+    }
+
+    fn update_state(&mut self, events: EventReader) {
+        let mut next_direction = self.snake.head_direction();
+        events.for_each(|event| match event {
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                App::handle_key_press(
+                    key_event.code,
+                    || self.exit(),
+                    |key| {
+                        App::update_direction(
+                            &mut next_direction,
+                            &Direction::from_key(key).unwrap(),
+                        )
+                    },
+                );
+            }
+            Event::Resize(x, y) => todo!(),
+            Event::FocusLost => todo!(),
+            Event::FocusGained => todo!(),
+            _ => {}
+        });
+        if self.snake.move_snake(&next_direction).is_err() {
+            self.exit();
+        }
     }
 
     const fn exit(&mut self) {
         self.exit = true;
     }
 
-    fn snake_head_direction(&self) -> Direction {
-        assert!(!self.segments.is_empty());
-        self.segments.back().unwrap().direction
-    }
-
     fn wait_for_next_tick(prev_tick: &Instant, tick_duration: Duration) {
         if prev_tick.elapsed() < tick_duration {
             thread::sleep(tick_duration - prev_tick.elapsed());
         }
-    }
-
-    fn read_events<F: FnMut(), G: FnMut(KeyCode)>(
-        mut on_q_press: F,
-        mut on_arrow_key_press: G,
-    ) -> io::Result<()> {
-        while let Some(event) = App::read_event()? {
-            match event {
-                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    App::handle_key_press(key_event.code, &mut on_q_press, &mut on_arrow_key_press);
-                }
-                _ => {}
-            }
-        }
-        Ok(())
     }
 
     fn handle_key_press<F: FnMut(), G: FnMut(KeyCode)>(
@@ -175,14 +137,6 @@ impl App {
             KeyCode::Char('q') => on_q_press(),
             KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => on_arrow_key_press(key),
             _ => {}
-        }
-    }
-
-    fn read_event() -> io::Result<Option<Event>> {
-        if event::poll(Duration::from_secs(0))? {
-            Ok(Some(event::read()?))
-        } else {
-            Ok(None)
         }
     }
 
@@ -203,55 +157,10 @@ impl App {
             _ => {}
         }
     }
-
-    fn move_head(&mut self, direction: &Direction) {
-        self.head_pos.shift(direction);
-        assert!(!self.segments.is_empty());
-        let last_segment = self.segments.back_mut().unwrap();
-        if last_segment.direction != *direction {
-            self.segments.push_back(Segment {
-                direction: *direction, // here a copy happens
-                length: 1,
-            });
-        } else {
-            last_segment.length += 1;
-        }
-    }
-
-    fn move_snake(&mut self, direction: &Direction) {
-        self.move_head(direction);
-        if self.head_pos == self.food_pos {
-            self.food_pos = Position {
-                x: rand::random::<u16>() % 25,
-                y: rand::random::<u16>() % 25,
-            }
-        } else {
-            self.move_tail();
-        }
-    }
-
-    fn move_tail(&mut self) {
-        let first_segment = self.segments.front_mut().unwrap();
-        first_segment.length -= 1;
-        if first_segment.length == 0 {
-            self.segments.pop_front();
-        }
-    }
 }
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        buf[self.food_pos]
-            // .set_symbol(&self.food_pos.character().to_string())
-            .set_symbol("█")
-            .set_fg(Color::Green);
-        let mut start_pos = self.head_pos; // todo: this can become a iterator
-        for segment in self.segments.iter().rev() {
-            for _ in 0..segment.length {
-                buf[start_pos].set_symbol("█").set_fg(Color::Yellow);
-                start_pos.shift(&segment.direction.opposite());
-            }
-        }
-        // TODO: handle food near snake color merging (bg and fg)
+        self.snake.render(area, buf);
     }
 }
