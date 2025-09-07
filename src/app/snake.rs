@@ -156,6 +156,7 @@ impl Snake {
     }
 
     pub fn has_self_intersection(&self) -> bool {
+        // todo: code duplication
         let (mut horizontal_counter, mut vertical_counter) = (0, 0);
         for segment in self.segments.iter().rev() {
             let (prev_horizontal_counter, prev_vertical_counter) =
@@ -224,16 +225,54 @@ impl Snake {
 impl Widget for &Snake {
     fn render(self, area: Rect, buf: &mut Buffer) {
         buf[self.food_pos].set_symbol("█").set_fg(self.food_color);
-        let mut start_pos = self.head_pos; // todo: this can become a iterator
-        for segment in self.segments.iter().rev() {
-            for _ in 0..segment.length {
-                buf[start_pos].set_symbol("█").set_fg(self.snake_color);
-                start_pos.shift(segment.direction.opposite());
-            }
+        for pos in self {
+            buf[pos].set_symbol("█").set_fg(self.snake_color);
         }
         Block::bordered()
             .border_type(BorderType::Thick)
             .render(area, buf);
+    }
+}
+
+pub struct SnakeIterator<'l> {
+    segment_idx: isize,
+    shifts_per_segment: usize,
+    snake: &'l Snake,
+    pos: Position,
+}
+
+impl Iterator for SnakeIterator<'_> {
+    type Item = Position;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let res = self.pos;
+        if self.segment_idx < 0 {
+            return None;
+        }
+        let segment = self.snake.segments.get(self.segment_idx as usize).unwrap();
+        if self.shifts_per_segment < segment.length {
+            self.shifts_per_segment += 1;
+            self.pos.shift(segment.direction.opposite());
+        } else {
+            self.shifts_per_segment = 0;
+            self.segment_idx -= 1;
+        }
+        Some(res)
+    }
+}
+
+impl<'l> IntoIterator for &'l Snake {
+    type Item = Position;
+
+    type IntoIter = SnakeIterator<'l>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SnakeIterator {
+            segment_idx: self.segments.len() as isize - 1,
+            shifts_per_segment: 0,
+            pos: self.head_pos,
+            snake: self,
+        }
     }
 }
 

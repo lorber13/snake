@@ -50,30 +50,12 @@ impl App {
             exit: false,
             snake: Snake::new(
                 area,
-                VecDeque::from([
-                    Segment {
-                        direction: Direction::West,
-                        length: 1,
-                    },
-                    Segment {
-                        direction: Direction::North,
-                        length: 5,
-                    },
-                    Segment {
-                        direction: Direction::East,
-                        length: 2,
-                    },
-                    Segment {
-                        direction: Direction::South,
-                        length: 3,
-                    },
-                    Segment {
-                        direction: Direction::East,
-                        length: 3,
-                    },
-                ]),
-                Position { x: 17, y: 3 }, // todo: randomize
-                Position { x: 14, y: 29 },
+                VecDeque::from([Segment {
+                    direction: Direction::East,
+                    length: 6,
+                }]),
+                Position { x: 8, y: 1 }, // todo: randomize
+                Position { x: 7, y: 1 },
                 Color::Yellow,
                 Color::Green,
             ),
