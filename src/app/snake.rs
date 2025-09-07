@@ -49,7 +49,7 @@ impl Position {
             y: rand::random_range(area.y..area.height),
         }
     }
-    const fn shift(&mut self, direction: &Direction) {
+    const fn shift(&mut self, direction: Direction) {
         match direction {
             Direction::North => self.y -= 1,
             Direction::East => self.x += 1, // todo: saturating sub?
@@ -106,7 +106,26 @@ impl Snake {
         self.segments.back().unwrap().direction
     }
 
-    pub fn move_snake(&mut self, direction: &Direction) {
+    fn legal_direction(&self, direction: Direction) -> Direction {
+        let curr_direction = self.head_direction();
+        match (curr_direction, direction) {
+            (Direction::North, Direction::East) => direction,
+            (Direction::North, Direction::West) => direction,
+            (Direction::East, Direction::North) => direction,
+            (Direction::East, Direction::South) => direction,
+            (Direction::South, Direction::East) => direction,
+            (Direction::South, Direction::West) => direction,
+            (Direction::West, Direction::North) => direction,
+            (Direction::West, Direction::South) => direction,
+            _ => curr_direction,
+        }
+    }
+
+    pub fn update_snake_position(&mut self, input: Direction) {
+        self.move_snake(self.legal_direction(input));
+    }
+
+    fn move_snake(&mut self, direction: Direction) {
         self.shift_head(direction);
         if self.head_pos == self.food_pos {
             self.food_pos = Position::random_range(self.area.inner(Margin {
@@ -187,13 +206,13 @@ impl Snake {
         false
     }
 
-    fn shift_head(&mut self, direction: &Direction) {
+    fn shift_head(&mut self, direction: Direction) {
         self.head_pos.shift(direction);
         assert!(!self.segments.is_empty());
         let last_segment = self.segments.back_mut().unwrap();
-        if last_segment.direction != *direction {
+        if last_segment.direction != direction {
             self.segments.push_back(Segment {
-                direction: *direction, // here a copy happens
+                direction, // here a copy happens
                 length: 1,
             });
         } else {
@@ -209,7 +228,7 @@ impl Widget for &Snake {
         for segment in self.segments.iter().rev() {
             for _ in 0..segment.length {
                 buf[start_pos].set_symbol("█").set_fg(self.snake_color);
-                start_pos.shift(&segment.direction.opposite());
+                start_pos.shift(segment.direction.opposite());
             }
         }
         Block::bordered()
