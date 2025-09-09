@@ -9,7 +9,7 @@ use ratatui::{
     DefaultTerminal, Frame, buffer::Buffer, layout::Rect, style::Color, widgets::Widget,
 };
 
-use crate::app::snake::{Direction, Position, Segment, Snake};
+use crate::app::snake::{Direction, Position, Snake};
 
 mod snake;
 
@@ -49,13 +49,17 @@ impl App {
         App {
             exit: false,
             snake: Snake::new(
+                Direction::East,
+                VecDeque::from([
+                    Position { x: 1, y: 2 },
+                    Position { x: 1, y: 3 },
+                    Position { x: 1, y: 4 },
+                    Position { x: 1, y: 5 },
+                    Position { x: 1, y: 6 },
+                    Position { x: 1, y: 7 },
+                ]),
+                Position { x: 3, y: 2 },
                 area,
-                VecDeque::from([Segment {
-                    direction: Direction::East,
-                    length: 6,
-                }]),
-                Position { x: 8, y: 1 }, // todo: randomize
-                Position { x: 7, y: 1 },
                 Color::Yellow,
                 Color::Green,
             ),
