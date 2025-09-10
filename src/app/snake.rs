@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crossterm::event::KeyCode;
+use rand::{rng, seq::IndexedRandom};
 use ratatui::{
     buffer::Buffer,
     layout::{Margin, Rect},
@@ -8,57 +8,7 @@ use ratatui::{
     widgets::{Block, BorderType, Widget},
 };
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum Direction {
-    North,
-    East,
-    South,
-    West,
-}
-
-impl Direction {
-    pub const fn from_key(key: KeyCode) -> Option<Self> {
-        match key {
-            KeyCode::Up => Some(Direction::North),
-            KeyCode::Down => Some(Direction::South),
-            KeyCode::Left => Some(Direction::West),
-            KeyCode::Right => Some(Direction::East),
-            _ => None,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct Position {
-    pub x: u16,
-    pub y: u16,
-}
-
-impl Position {
-    fn random_range(area: Rect) -> Self {
-        Self {
-            x: rand::random_range(area.x..area.width),
-            y: rand::random_range(area.y..area.height),
-        }
-    }
-    const fn shift(&mut self, direction: Direction) {
-        match direction {
-            Direction::North => self.y -= 1,
-            Direction::East => self.x += 1, // todo: saturating sub?
-            Direction::South => self.y += 1,
-            Direction::West => self.x -= 1,
-        }
-    }
-}
-
-impl From<Position> for ratatui::layout::Position {
-    fn from(value: Position) -> Self {
-        Self {
-            x: value.x,
-            y: value.y,
-        }
-    }
-}
+use super::grid::{Direction, Position};
 
 pub struct Snake {
     direction: Direction,
@@ -114,14 +64,30 @@ impl Snake {
         self.move_snake(self.legal_direction(input));
     }
 
+    fn area_no_border(&self) -> Rect {
+        self.area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        })
+    }
+
+    fn update_food_pos(&mut self) {
+        let mut available_positions =
+            Vec::with_capacity(((self.area.width - 2) * (self.area.height - 2)) as usize);
+        for char_pos in self.area_no_border().positions() {
+            let pos = char_pos.into();
+            if !self.shape.contains(&pos) {
+                available_positions.push(pos);
+            }
+        }
+        self.food_pos = *available_positions.choose(&mut rng()).unwrap();
+    }
+
     fn move_snake(&mut self, direction: Direction) {
         self.direction = direction;
         self.shift_head(direction);
         if self.head_pos() == self.food_pos {
-            self.food_pos = Position::random_range(self.area.inner(Margin {
-                horizontal: 1,
-                vertical: 1,
-            }))
+            self.update_food_pos();
         } else {
             self.shift_tail();
         }
@@ -170,10 +136,7 @@ impl Widget for &Snake {
 
 #[cfg(test)]
 mod tests {
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-
-    const ORIGIN: Position = Position { x: 0, y: 0 };
 
     #[test]
     fn square_self_intersection() {
@@ -186,7 +149,7 @@ mod tests {
                 Position { x: 1, y: 0 },
                 Position { x: 0, y: 0 },
             ]),
-            food_pos: ORIGIN,
+            food_pos: Position::ORIGIN,
             area: Rect::ZERO,
             food_color: Color::Black,
             shape_color: Color::Black,
@@ -207,7 +170,7 @@ mod tests {
                 Position { x: 0, y: 1 },
                 Position { x: 0, y: 0 },
             ]),
-            food_pos: ORIGIN,
+            food_pos: Position::ORIGIN,
             area: Rect::ZERO,
             food_color: Color::Black,
             shape_color: Color::Black,
@@ -232,7 +195,7 @@ mod tests {
                 Position { x: 1, y: 1 },
                 Position { x: 1, y: 0 },
             ]),
-            food_pos: ORIGIN,
+            food_pos: Position::ORIGIN,
             area: Rect::ZERO,
             food_color: Color::Black,
             shape_color: Color::Black,
@@ -254,7 +217,7 @@ mod tests {
                 Position { x: 1, y: 3 },
                 Position { x: 2, y: 3 },
             ]),
-            food_pos: ORIGIN,
+            food_pos: Position::ORIGIN,
             area: Rect::ZERO,
             food_color: Color::Black,
             shape_color: Color::Black,

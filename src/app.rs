@@ -5,12 +5,14 @@ use std::{
 };
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use grid::{Direction, Position};
 use ratatui::{
     DefaultTerminal, Frame, buffer::Buffer, layout::Rect, style::Color, widgets::Widget,
 };
 
-use crate::app::snake::{Direction, Position, Snake};
+use crate::app::snake::Snake;
 
+mod grid;
 mod snake;
 
 pub struct App {
